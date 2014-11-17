@@ -1,51 +1,103 @@
-MAX_QUALITY = 50
-MIN_QUALITY = 0
 def update_quality(items)
-  items.each do |item|
-    if item.name != 'Aged Brie' && item.name != 'Backstage passes to a TAFKAL80ETC concert'
-      decrease_quality(item)
-    else
-      increase_quality(item)
-        if item.name == 'Backstage passes to a TAFKAL80ETC concert'
-          if item.sell_in < 11
-            increase_quality(item)
-          end
-          if item.sell_in < 6
-            increase_quality(item)
-          end
-        end
+  QualityUpdater.new.update(items)
+end
+
+class QualityUpdater
+  def update(items)
+    items.each do |item|
+      update_one(item)
+    end
+  end
+
+  private
+
+  class StandardQualityUpdater
+    def update(item)
+      update_quality(item)
+      update_sell_in(item)
+    end
+
+    def update_quality(item)
+      if item.sell_in <= 0
+        bump(item, -2)
+      else
+        bump(item, -1)
       end
     end
-    if item.name != 'Sulfuras, Hand of Ragnaros'
+
+    def update_sell_in(item)
       item.sell_in -= 1
     end
-    if item.sell_in < 0
-      if item.name != "Aged Brie"
-        if item.name != 'Backstage passes to a TAFKAL80ETC concert'
-          decrease_quality(item)
-        else
-          item.quality = item.quality - item.quality
-        end
+
+    def bump(item, amount)
+      item.quality += amount
+      item.quality = 50 if item.quality > 50
+      item.quality = 0 if item.quality < 0
+    end
+  end
+
+  class NoopQualityUpdater < StandardQualityUpdater
+    def update_quality(item)
+    end
+    def update_sell_in(item)
+    end
+  end
+
+  class BrieQualityUpdater < StandardQualityUpdater
+    def update_quality(item)
+      if item.sell_in <= 0
+        bump(item, 2)
       else
-        increase_quality(item)
+        bump(item, 1)
       end
     end
   end
-end
 
-private
+  class BackstagePassQualityUpdater < StandardQualityUpdater
+    def update_quality(item)
+      if item.sell_in > 10
+        bump(item, 1)
+      elsif item.sell_in > 5
+        bump(item, 2)
+      elsif item.sell_in > 0
+        bump(item, 3)
+      else
+        item.quality = 0
+      end
+    end
+  end
 
-def increase_quality(item)
-  if item.quality < MAX_QUALITY
-    item.quality += 1
+  class ConjuredItemQualityUpdater < StandardQualityUpdater
+    def update_quality(item)
+      if item.sell_in <= 0
+        bump(item, -4)
+      else
+        bump(item, -2)
+      end
+    end
+  end
+
+  UPDATERS = [
+    [/^Sulfuras, Hand of Ragnaros$/, NoopQualityUpdater.new],
+    [/^Aged Brie$/, BrieQualityUpdater.new],
+    [/^Backstage passes to a TAFKAL80ETC concert$/, BackstagePassQualityUpdater.new],
+    [/^Conjured /, ConjuredItemQualityUpdater.new],
+  ]
+
+  def update_one(item)
+    updater_for(item).update(item)
+  end
+
+  def updater_for(item)
+    pair = UPDATERS.detect { |re, handler| re =~ item.name }
+    handler = pair ? pair[1] : standard_updater
+  end
+
+  def standard_updater
+    @standard_handler ||= StandardQualityUpdater.new
   end
 end
 
-def decrease_quality(item)
-  if item.name != 'Sulfuras, Hand of Ragnaros' && item.quality > MIN_QUALITY
-    item.quality -= 1
-  end
-end
 
 # DO NOT CHANGE THINGS BELOW -----------------------------------------
 
